@@ -1,4 +1,4 @@
-"""WebSocket client for the Nova Sonic voice agent: one live call (auth, real-time PCM streaming, event capture).
+"""WebSocket client for the Nova Sonic voice agent: one live conversation (auth, real-time PCM streaming, event capture).
 
 Used by the simulator (simulator/sim_runner.py) and the live console. Protocol: see ../main.py.
   client -> server  binary : raw PCM16 mono 16 kHz, streamed in 30 ms frames (silence when the caller is quiet)
@@ -21,8 +21,8 @@ SETTLE_S = 3.0                            # quiet time that means "the agent fin
 TURN_TIMEOUT_S = 60
 
 
-# ------------------------------------------------------------ one live call ---
-class Call:
+# ------------------------------------------------------------ one live conversation ---
+class Conversation:
     def __init__(self) -> None:
         self.t0 = time.perf_counter()
         self.events: list[dict] = []
@@ -125,13 +125,13 @@ async def get_token(ws_url: str) -> str:
 
 
 # -------------------------------------------------------------- audio export ---
-def write_conversation_wav(call: Call, path: Path) -> float:
+def write_conversation_wav(conversation: Conversation, path: Path) -> float:
     """Stereo 16 kHz WAV on the call's real timeline: caller on the left, agent on the right.
     Agent chunks arrive faster than real time, so they are queued like a speaker would play them."""
     rate = 16_000
-    caller = [(t, np.frombuffer(f, dtype="<i2")) for t, f in call.caller_audio]
+    caller = [(t, np.frombuffer(f, dtype="<i2")) for t, f in conversation.caller_audio]
     agent, cursor = [], 0.0
-    for t, chunk in call.agent_audio:
+    for t, chunk in conversation.agent_audio:
         cursor = max(cursor, t)
         x = np.frombuffer(chunk[: len(chunk) // 2 * 2], dtype="<i2").astype(np.float64)
         n_out = int(len(x) * rate / 24_000)  # 24 kHz -> 16 kHz (linear; fine for listening back)

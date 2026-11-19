@@ -26,7 +26,7 @@ import httpx
 import websockets
 
 from judge import llm_judge as judge  # noqa: E402
-from ws_client import Call, TURN_TIMEOUT_S, get_token  # noqa: E402
+from ws_client import Conversation, TURN_TIMEOUT_S, get_token  # noqa: E402
 
 from . import clips, tts  # noqa: E402
 
@@ -114,23 +114,23 @@ def pick_audio(turn: dict, voice: str, mode: str, catalog: list[dict]) -> tuple[
     return tts.synthesize(voice, turn["utterance"]), "tts"
 
 
-# --------------------------------------------------------------- one call ---
-def transcript_of(call: Call, said: list[str]) -> list[dict]:
+# --------------------------------------------------------------- one conversation ---
+def transcript_of(conversation: Conversation, said: list[str]) -> list[dict]:
     out = []
     for i, line in enumerate(said):
         out.append({"speaker": "caller", "text": line})
-        reply = " ".join(e["text"] for e in call.events if e["turn"] == i and e["type"] == "reply")
+        reply = " ".join(e["text"] for e in conversation.events if e["turn"] == i and e["type"] == "reply")
         if reply:
             out.append({"speaker": "agent", "text": reply})
     return out
 
 
-def conversation_of(call: Call, said: list[str]) -> list[dict]:
+def conversation_of(conversation: Conversation, said: list[str]) -> list[dict]:
     """The shape judge.py renders: caller / heard / agent / tool items in time order."""
     conv = []
     for i, line in enumerate(said):
-        conv.append({"role": "caller", "turn": i, "t": call.user_start.get(i, 0), "text": line})
-    for e in call.events:
+        conv.append({"role": "caller", "turn": i, "t": conversation.user_start.get(i, 0), "text": line})
+    for e in conversation.events:
         if e["type"] == "transcript":
             conv.append({"role": "heard", "t": e["t"], "text": e["text"]})
         elif e["type"] == "reply":
@@ -149,37 +149,37 @@ async def simulate(sp: dict, args: argparse.Namespace, emit=lambda ev: None, on_
     catalog = clip_catalog(source) if args.audio != "dynamic" else []
     ask = (lambda req: turn_via_ollama(args.persona_ollama, req)) if args.persona_ollama else \
           (lambda req: turn_via_agent(args.persona_url, req))
-    call, said, trace = Call(), [], []
-    call.on_audio = on_audio  # live audio tap for the web console: (channel 0 caller 16 kHz | 1 agent 24 kHz, pcm)
+    conversation, said, trace = Conversation(), [], []
+    conversation.on_audio = on_audio  # live audio tap for the web console: (channel 0 caller 16 kHz | 1 agent 24 kHz, pcm)
     seen, audio_noted = 0, set()
 
     def pump(turn: int) -> None:  # forward new agent-side events to the console as they arrive
         nonlocal seen
-        while seen < len(call.events):
-            e = call.events[seen]
+        while seen < len(conversation.events):
+            e = conversation.events[seen]
             seen += 1
             emit({"type": "agent_event", "kind": e["type"], "turn": e["turn"], "t": round(e["t"], 2),
                   **{k: e[k] for k in ("text", "name", "args", "result", "ms", "message") if k in e}})
-        if turn in call.first_audio and turn not in audio_noted:
+        if turn in conversation.first_audio and turn not in audio_noted:
             audio_noted.add(turn)
-            ok = turn in call.user_end and call.first_audio[turn] >= call.user_end[turn]
+            ok = turn in conversation.user_end and conversation.first_audio[turn] >= conversation.user_end[turn]
             emit({"type": "agent_audio", "turn": turn,
-                  "ttfa_ms": round((call.first_audio[turn] - call.user_end[turn]) * 1000) if ok else None})
+                  "ttfa_ms": round((conversation.first_audio[turn] - conversation.user_end[turn]) * 1000) if ok else None})
 
     emit({"type": "call_start", "id": sp["id"], "persona": persona, "scenario": scenario, "voice": voice,
           "audio": args.audio, "max_turns": args.max_turns})
     async with websockets.connect(args.url, max_size=None,
                                   additional_headers={"Authorization": f"Bearer {await get_token(args.url)}"}) as ws:
-        rx = asyncio.create_task(call.receive(ws))
+        rx = asyncio.create_task(conversation.receive(ws))
         tx = None
         try:
-            await asyncio.wait_for(call.ready.wait(), 30)
-            if call.error:
-                emit({"type": "call_end", "error": call.error})
-                return {"id": sp["id"], "error": call.error}
-            tx = asyncio.create_task(call.send_loop(ws))
+            await asyncio.wait_for(conversation.ready.wait(), 30)
+            if conversation.error:
+                emit({"type": "call_end", "error": conversation.error})
+                return {"id": sp["id"], "error": conversation.error}
+            tx = asyncio.create_task(conversation.send_loop(ws))
             for i in range(args.max_turns):
-                req = build_request(persona, scenario, transcript_of(call, said), catalog, i, args.max_turns)
+                req = build_request(persona, scenario, transcript_of(conversation, said), catalog, i, args.max_turns)
                 emit({"type": "persona_thinking", "turn": i})
                 started = time.perf_counter()
                 try:
@@ -192,7 +192,7 @@ async def simulate(sp: dict, args: argparse.Namespace, emit=lambda ev: None, on_
                 try:
                     pcm, how = await asyncio.to_thread(pick_audio, turn, source, args.audio, catalog)
                 except Exception as exc:
-                    call.events.append({"type": "sim_error", "turn": i, "t": call.now(), "message": str(exc)})
+                    conversation.events.append({"type": "sim_error", "turn": i, "t": conversation.now(), "message": str(exc)})
                     emit({"type": "persona_error", "turn": i, "message": str(exc)})
                     break
                 fields = {k: turn[k] for k in ("utterance", "clip_id", "intent", "end_call", "barge_in",
@@ -202,38 +202,38 @@ async def simulate(sp: dict, args: argparse.Namespace, emit=lambda ev: None, on_
                 if turn["barge_in"] and i > 0:  # impatient caller: cut in shortly after the agent starts talking
                     for _ in range(40):
                         pump(i - 1)
-                        if i - 1 in call.first_audio and call.now() > call.first_audio[i - 1] + 0.8:
+                        if i - 1 in conversation.first_audio and conversation.now() > conversation.first_audio[i - 1] + 0.8:
                             break
                         await asyncio.sleep(0.1)
-                call.turn = i
+                conversation.turn = i
                 said.append(turn["utterance"])
-                call.user_start[i] = call.now()
+                conversation.user_start[i] = conversation.now()
                 emit({"type": "caller_speaking", "turn": i, "seconds": round(len(pcm) / 32000, 1)})
-                speak = asyncio.create_task(call.say(pcm))
+                speak = asyncio.create_task(conversation.say(pcm))
                 while not speak.done():
                     pump(i)
                     await asyncio.sleep(0.1)
-                call.user_end[i] = speak.result()
+                conversation.user_end[i] = speak.result()
                 emit({"type": "caller_spoken", "turn": i})
                 trace.append({"turn": i, "how": how, "think_ms": think_ms, **fields})
                 print(f"  [{i}] ({how}) {turn['utterance']}")
                 deadline = time.perf_counter() + TURN_TIMEOUT_S
-                while not call.turn_done(i) and not call.error and time.perf_counter() < deadline and not rx.done():
+                while not conversation.turn_done(i) and not conversation.error and time.perf_counter() < deadline and not rx.done():
                     pump(i)
                     await asyncio.sleep(0.1)
                 pump(i)
-                for e in call.events:  # show what the agent did this turn
+                for e in conversation.events:  # show what the agent did this turn
                     if e["turn"] == i and e["type"] == "tool":
                         print(f"      tool {e['name']}({json.dumps(e['args'])}) -> {json.dumps(e['result'])[:120]}  [{e.get('ms')} ms]")
-                heard = " ".join(e["text"] for e in call.events if e["turn"] == i and e["type"] == "transcript")
-                reply = " ".join(e["text"] for e in call.events if e["turn"] == i and e["type"] == "reply")
-                ttfa = call.first_audio.get(i)
+                heard = " ".join(e["text"] for e in conversation.events if e["turn"] == i and e["type"] == "transcript")
+                reply = " ".join(e["text"] for e in conversation.events if e["turn"] == i and e["type"] == "reply")
+                ttfa = conversation.first_audio.get(i)
                 print(f"      agent heard: {heard}")
                 print(f"      AGENT: {reply}")
-                if ttfa and i in call.user_end:
-                    print(f"      (first audio {round((ttfa - call.user_end[i]) * 1000)} ms after the caller stopped)")
-                if not call.turn_done(i):
-                    call.events.append({"type": "timeout", "turn": i, "t": call.now()})
+                if ttfa and i in conversation.user_end:
+                    print(f"      (first audio {round((ttfa - conversation.user_end[i]) * 1000)} ms after the caller stopped)")
+                if not conversation.turn_done(i):
+                    conversation.events.append({"type": "timeout", "turn": i, "t": conversation.now()})
                     emit({"type": "agent_event", "kind": "timeout", "turn": i, "message": "agent did not finish in time"})
                     break
                 emit({"type": "turn_end", "turn": i})
@@ -245,12 +245,12 @@ async def simulate(sp: dict, args: argparse.Namespace, emit=lambda ev: None, on_
             rx.cancel()
     if wav_path:
         from ws_client import write_conversation_wav
-        write_conversation_wav(call, Path(wav_path))
-    conv = conversation_of(call, said)
+        write_conversation_wav(conversation, Path(wav_path))
+    conv = conversation_of(conversation, said)
     result = {"id": sp["id"], "voice": voice, "audio_mode": args.audio, "turns": trace, "conversation": conv,
-              "error": call.error, "timed_out": any(e["type"] == "timeout" for e in call.events),
-              "tools_called": [e["name"] for e in call.events if e["type"] == "tool"]}
-    emit({"type": "call_end", "tools_called": result["tools_called"], "timed_out": result["timed_out"], "error": call.error})
+              "error": conversation.error, "timed_out": any(e["type"] == "timeout" for e in conversation.events),
+              "tools_called": [e["name"] for e in conversation.events if e["type"] == "tool"]}
+    emit({"type": "call_end", "tools_called": result["tools_called"], "timed_out": result["timed_out"], "error": conversation.error})
     return result
 
 
