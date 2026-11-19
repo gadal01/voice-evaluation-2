@@ -8,7 +8,7 @@ voice_sim_lab/
   simulator/       the simulated caller
     persona_agent/   base-agent config for the persona LLM (config.yaml, prompts, schema, sample request)
     sim_runner.py    runs one call: persona -> clip or Piper audio -> agent -> repeat -> judge
-    clips.py tts.py  stored caller clips (caller_clips/) and live TTS (Piper, Kokoro, Polly, ElevenLabs)
+    clips.py tts.py  stored caller clips (caller_clips/) and live TTS (Piper only)
     personas.json    who calls and why;  scenarios.json  scripted scenarios and expectations
   ws_client/       WebSocket client: auth token, real-time PCM streaming, event capture, call recording
   judge/           LLM judge: llm_judge.py (rubric, Ollama or Bedrock), judge_cli.py (judge saved runs)

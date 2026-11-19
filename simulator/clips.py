@@ -4,7 +4,7 @@ The caller's words are the test INPUT; the agent's reply is what is under test. 
 makes every run replay exactly the same audio (no TTS drift, no API calls, no keys) and lets real human recordings
 sit beside synthetic ones.
 
-    python -m simulator.clips record [--voices kokoro:af_heart,piper:en_US-lessac-medium] [--scenarios id,id]
+    python -m simulator.clips record [--voices piper:en_US-lessac-medium] [--scenarios id,id]
         render the scenarios' caller turns with TTS voices and store them (level-normalised, 16 kHz mono)
     python -m simulator.clips add-human dishwasher_request evals/my_recording.wav --name alice [--turn 0]
         import a real recording (any WAV/FLAC, any rate) for a scenario line; it must say the scripted sentence.
@@ -12,8 +12,8 @@ sit beside synthetic ones.
         lines (an unknown number prints that list)
     python -m simulator.clips list | verify | export <out.html>
 
-Replay in an eval with a clip voice:   run_evals.py --voices clip:kokoro:af_heart,clip:human:alice   (or clip:*)
-A clip is found by (source, text): source is "kokoro:af_heart" for TTS or "human:<name>" for a person.
+Replay in an eval with a clip voice:   sim_runner --voice clip:piper:en_US-lessac-medium   (or clip:*)
+A clip is found by (source, text): source is "piper:en_US-lessac-medium" for TTS or "human:<name>" for a person.
 Files live in evals/caller_clips/<id>.wav with index.json beside them; track *.wav with Git LFS.
 """
 import argparse
@@ -32,7 +32,7 @@ HERE = Path(__file__).resolve().parent
 DIR = HERE / "caller_clips"
 INDEX = DIR / "index.json"
 RATE = 16_000
-DEFAULT_VOICES = "kokoro:af_heart,kokoro:am_michael,piper:en_US-lessac-medium,piper:en_GB-alba-medium"
+DEFAULT_VOICES = "piper:en_US-lessac-medium"
 
 
 def tkey(text: str) -> str:

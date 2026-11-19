@@ -7,6 +7,11 @@ unspeakable answer, a booking made without a clear yes. It is advisory: it never
 import json
 import os
 import re
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")  # AWS keys for Bedrock live in the lab's .env
 
 CRITERIA = {
     "task_success": "Did the agent accomplish what the caller wanted (or correctly decline when it is out of scope)?",
@@ -14,7 +19,7 @@ CRITERIA = {
     "policy": "Did it follow the rules: confirm details and price before booking, read back the phone number, never book unless the caller clearly agreed, stay in scope?",
     "voice_style": "Is it suited to speech: short, natural, no lists/markdown/ids read out, no reasoning or tool names spoken aloud?",
 }
-MODEL = os.getenv("JUDGE_MODEL", "us.amazon.nova-pro-v1:0")
+MODEL = os.getenv("JUDGE_MODEL", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 PASS_AT = 4  # verdict is "pass" when every criterion scores at least this
 
 SYSTEM = (

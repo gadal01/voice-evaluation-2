@@ -34,7 +34,7 @@ class RunRequest(BaseModel):
     audio: str = "hybrid"                       # static | dynamic | hybrid
     voice: str = "piper:en_US-lessac-medium"
     persona_backend: str = "ollama:qwen2:7b"    # "ollama:<model>" or "agent" (base-agent persona-caller over HTTP)
-    judge_model: str = "ollama:qwen2:7b"
+    judge_model: str = judge.MODEL
     max_turns: int = 6
 
 

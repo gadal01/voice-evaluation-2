@@ -1,4 +1,4 @@
-"""Judge finished calls with a LOCAL LLM (Ollama). No AWS, no API keys.
+"""Judge finished calls with an LLM: Claude Haiku on Bedrock by default, or a local Ollama model with --model ollama:qwen2:7b.
 
     python -m judge.judge_cli results/20261016-114914                 # judge every run in a results folder
     python -m judge.judge_cli results/<run> --model ollama:qwen2:7b --scenario book_ac_inspection --repeat 3
@@ -19,7 +19,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 from . import llm_judge as judge  # noqa: E402
 
-DEFAULT_MODEL = "ollama:qwen2:7b"
+DEFAULT_MODEL = judge.MODEL  # Haiku on Bedrock; pass --model ollama:qwen2:7b for the local model
 
 
 def parse_transcript(path: Path) -> list[dict]:
@@ -60,7 +60,7 @@ def main() -> None:
     ap.add_argument("results", nargs="?", help="results folder containing runs.jsonl")
     ap.add_argument("--transcript", help="judge a single transcript .txt instead of a results folder")
     ap.add_argument("--scenario", help="scenario id (required with --transcript; otherwise filters runs)")
-    ap.add_argument("--model", default=DEFAULT_MODEL, help="ollama:<name> (default %(default)s)")
+    ap.add_argument("--model", default=DEFAULT_MODEL, help="Bedrock model id, or ollama:<name> (default %(default)s)")
     ap.add_argument("--repeat", type=int, default=1, help="judge each call N times, take the median per criterion")
     args = ap.parse_args()
 

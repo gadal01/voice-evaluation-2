@@ -264,7 +264,7 @@ def main() -> None:
     ap.add_argument("--max-turns", type=int, default=8)
     ap.add_argument("--persona-url", default=os.getenv("PERSONA_URL", "http://127.0.0.1:8080/persona-caller/turn"))
     ap.add_argument("--persona-ollama", default="", help="e.g. ollama:qwen2:7b: skip base-agent, run the persona prompts locally")
-    ap.add_argument("--judge-model", default="ollama:qwen2:7b")
+    ap.add_argument("--judge-model", default=judge.MODEL, help="Bedrock model id or ollama:<name>")
     ap.add_argument("--no-judge", action="store_true")
     ap.add_argument("--out", default=str(HERE.parent / "results"))
     args = ap.parse_args()

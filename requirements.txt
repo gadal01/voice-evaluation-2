@@ -12,4 +12,5 @@ httpx
 numpy
 jiwer
 piper-tts
+soxr
 boto3

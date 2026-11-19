@@ -14,6 +14,9 @@ from pathlib import Path
 
 import numpy as np
 import websockets
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")  # AUTH_API_KEY for /auth/token
 
 FRAME_BYTES, FRAME_S = 960, 0.03          # 30 ms of 16 kHz PCM16
 OUT_BYTES_PER_S = 24_000 * 2              # agent audio is 24 kHz PCM16
