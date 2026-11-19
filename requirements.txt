@@ -1,0 +1,15 @@
+# voice agent (sonic.py targets the 0.12.x SDK: AsyncBedrockRuntimeClient was renamed in 0.13)
+fastapi
+uvicorn[standard]
+python-dotenv
+pydantic-settings
+pyjwt
+mcp>=1.12,<2
+aws_sdk_bedrock_runtime[awscrt]>=0.12,<0.13  # Python 3.12+
+# simulator, judge, websocket client
+websockets
+httpx
+numpy
+jiwer
+piper-tts
+boto3

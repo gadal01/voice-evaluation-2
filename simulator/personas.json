@@ -1,0 +1,41 @@
+[
+  {
+    "id": "sam_ac_impatient",
+    "voice": "piper:en_US-lessac-medium",
+    "persona": {
+      "name": "Sam Rivera",
+      "traits": "impatient, gives phone digits fast, corrects the agent if it gets anything wrong",
+      "speaking_style": "short clipped sentences, occasional 'look,'",
+      "patience": 2,
+      "facts": {
+        "name": "Sam Rivera",
+        "phone": "five five five, zero one zero zero",
+        "appliance": "air conditioner, not cooling",
+        "preference": "earliest available slot"
+      }
+    },
+    "scenario": {
+      "goal": "Book an inspection for the air conditioner and hear the price and a confirmation.",
+      "give_up_when": "the assistant fails to understand you three times in a row or cannot book it"
+    }
+  },
+  {
+    "id": "maria_fridge_cost_only",
+    "voice": "piper:en_US-lessac-medium",
+    "persona": {
+      "name": "Maria Lopez",
+      "traits": "polite, a bit chatty, only wants a price and does not want to book yet",
+      "speaking_style": "friendly full sentences, says 'thank you' often",
+      "patience": 4,
+      "facts": {
+        "appliance": "refrigerator",
+        "service": "express full service",
+        "booking": "do not book anything; just ask the price"
+      }
+    },
+    "scenario": {
+      "goal": "Find out how much an express full service on the refrigerator costs, without booking.",
+      "give_up_when": "the assistant tries to book without your agreement and you cannot stop it"
+    }
+  }
+]

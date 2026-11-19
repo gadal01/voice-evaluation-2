@@ -1,0 +1,47 @@
+# persona-caller: one stateless call per caller turn. Returns what the simulated caller says next.
+# ASSUMPTION markers (# ?) are keys/syntax inferred from the base-agent README screenshots; confirm against the real loader.
+
+workflow:
+  steps:
+    - name: "plan_turn"
+      model:
+        id: "${MODEL_ID:-us.anthropic.claude-haiku-4-5-20251001-v1:0}"
+        temperature: "${MODEL_TEMPERATURE:-0.7}"   # callers should vary run to run; set MODEL_TEMPERATURE=null if the model rejects it
+        max_tokens: "${MODEL_MAX_TOKENS:-300}"      # short spoken turns, keeps latency ~1s
+      prompts:
+        system:
+          - source: file
+            path: plan_turn/system.txt
+        user:
+          - source: file
+            path: plan_turn/user.txt
+      json_response: true
+      schema: "turn_output.json"
+      streaming: false
+
+mcp:
+  servers: []            # none needed: audio stays out of the LLM; the runner renders clips/Piper
+
+skills:
+  dir: "/app/skills"
+  enabled: false
+
+integrations:
+  mongodb:
+    enabled: true
+    collection: "${MONGO_COLLECTION:-voice-sim-turns}"
+    save_on_success: true
+    save_on_failure: true
+  redis_cache:
+    enabled: true
+    ttl_seconds: 86400   # identical (persona, scenario, transcript) -> same turn; makes replays cheap and deterministic
+
+api:
+  endpoints:
+    - path: "/persona-caller/turn"
+      method: "POST"
+      error_status_codes:
+        RETRIEVAL_ERROR: 502
+        MCP_CONNECTION_ERROR: 503
+        TIMEOUT_ERROR: 504
+        INTERNAL_ERROR: 500

@@ -1,0 +1,24 @@
+{
+  "user": {
+    "userId": "sim-001",
+    "userEmail": "qa@example.com"
+  },
+  "data": {
+    "persona": {
+      "name": "Sam Rivera",
+      "traits": "impatient, gives phone digits fast, corrects the agent if it gets anything wrong",
+      "speaking_style": "short clipped sentences, occasional 'look,'",
+      "patience": 2,
+      "facts": "name: Sam Rivera; phone: five five five, zero one zero zero; appliance: air conditioner, not cooling; preference: earliest available slot"
+    },
+    "scenario": {
+      "goal": "Book an inspection for the air conditioner and hear the price and a confirmation.",
+      "give_up_when": "the assistant fails to understand you three times in a row or cannot book it"
+    },
+    "clip_catalog": "- book_ac_reactive-r0: \"Hi, I would like to book an inspection for my air conditioner.\"\n- book_ac_reactive-r1: \"My phone number is five five five, zero one zero zero.\"",
+    "transcript": "caller: Hi, I would like to book an inspection for my air conditioner.\nagent: Happy to help. Can I get your name and phone number?",
+    "turn_index": 2,
+    "max_turns": 8,
+    "turn_note": ""
+  }
+}

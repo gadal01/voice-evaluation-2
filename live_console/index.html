@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice Simulator Console</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1c2330; --mute:#667085; --line:#e2e6ec;
+          --sim:#0a58ca; --agent:#198754; --judge:#8a4fd1; --warn:#b54708; --bad:#b42318; --good:#067647; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#12151b; --card:#1b2029; --ink:#e7eaf0; --mute:#97a1b3; --line:#2a313d;
+          --sim:#6ea8fe; --agent:#5dd39e; --judge:#c4a0ff; --warn:#f0a35e; --bad:#ff8a80; --good:#5dd39e; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui, sans-serif; }
+  header { padding:12px 16px; display:flex; flex-wrap:wrap; gap:10px; align-items:end; border-bottom:1px solid var(--line); background:var(--card); }
+  header label { display:flex; flex-direction:column; font-size:11px; color:var(--mute); gap:2px; }
+  select, input, button { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); }
+  button { background:var(--sim); color:#fff; border-color:var(--sim); cursor:pointer; font-weight:600; }
+  button:disabled { opacity:.5; cursor:wait; }
+  #status { margin-left:auto; color:var(--mute); font-size:12px; }
+  main { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; padding:12px; height:calc(100vh - 66px); }
+  @media (max-width: 900px) { main { grid-template-columns:1fr; height:auto; } .col { max-height:70vh; } }
+  .col { background:var(--card); border:1px solid var(--line); border-radius:10px; display:flex; flex-direction:column; min-height:0; }
+  .col h2 { margin:0; padding:10px 12px; font-size:13px; letter-spacing:.04em; text-transform:uppercase; border-bottom:1px solid var(--line); }
+  .col.sim h2 { color:var(--sim); } .col.agent h2 { color:var(--agent); } .col.judge h2 { color:var(--judge); }
+  .feed { overflow:auto; padding:10px 12px; display:flex; flex-direction:column; gap:8px; flex:1; }
+  .msg { padding:8px 10px; border-radius:8px; border:1px solid var(--line); }
+  .sim .msg.say { border-left:3px solid var(--sim); } .agent .msg.say { border-left:3px solid var(--agent); }
+  .meta { font-size:11px; color:var(--mute); margin-top:3px; }
+  .tag { display:inline-block; font-size:11px; padding:0 6px; border-radius:9px; background:var(--bg); border:1px solid var(--line); margin-right:4px; }
+  .tool { font:12px ui-monospace, Consolas, monospace; word-break:break-all; color:var(--mute); }
+  .heard { font-style:italic; color:var(--mute); font-size:13px; }
+  .pending { color:var(--mute); font-style:italic; }
+  .pending::after { content:'…'; animation:blink 1s infinite; } @keyframes blink { 50% { opacity:.2; } }
+  .err { color:var(--bad); }
+  .score { display:grid; grid-template-columns:1fr auto; gap:4px 10px; }
+  .bar { height:6px; border-radius:3px; background:var(--line); grid-column:1 / 3; overflow:hidden; } .bar i { display:block; height:100%; background:var(--judge); }
+  .verdict { font-size:18px; font-weight:700; } .pass { color:var(--good); } .fail { color:var(--bad); }
+  .intro { color:var(--mute); font-size:13px; }
+  .chk { align-items:center; } .chk input { width:18px; height:18px; padding:0; }
+  .live { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--line); margin-left:8px; vertical-align:middle; transition:background .1s; }
+  .live.on.simdot { background:var(--sim); } .live.on.agentdot { background:var(--agent); }
+  audio { width:100%; margin-top:6px; }
+</style>
+</head>
+<body>
+<header>
+  <label>Persona <select id="persona"></select></label>
+  <label>Audio <select id="audio"><option>hybrid</option><option>static</option><option>dynamic</option></select></label>
+  <label>Voice <input id="voice" value="piper:en_US-lessac-medium" size="26"></label>
+  <label>Persona model <input id="pbackend" value="ollama:qwen2:7b" size="16" title="ollama:<model>, or 'agent' to call the base-agent persona-caller"></label>
+  <label>Judge model <input id="jmodel" value="ollama:qwen2:7b" size="16"></label>
+  <label>Max turns <input id="turns" type="number" value="6" min="1" max="20" style="width:64px"></label>
+  <label class="chk"><span>Sound</span><input id="sound" type="checkbox" checked title="Play the call audio live (caller left, agent right)"></label>
+  <button id="go">Start call</button>
+  <div id="status">idle</div>
+</header>
+<main>
+  <section class="col sim"><h2>Simulator · caller persona<span class="live simdot" id="simdot"></span></h2><div class="feed" id="sim"><div class="intro">Pick a persona and press Start call.</div></div></section>
+  <section class="col agent"><h2>Agent under test · Nova Sonic<span class="live agentdot" id="agentdot"></span></h2><div class="feed" id="agent"></div></section>
+  <section class="col judge"><h2>LLM judge</h2><div class="feed" id="judge"></div></section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const feeds = { sim: $('sim'), agent: $('agent'), judge: $('judge') };
+let es, pending = {};   // pending: elements showing a "thinking..." placeholder
+
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function add(feed, html, cls = '') {
+  const d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html;
+  feeds[feed].append(d); feeds[feed].scrollTop = feeds[feed].scrollHeight; return d;
+}
+function clearPending(key) { if (pending[key]) { pending[key].remove(); delete pending[key]; } }
+function setStatus(t) { $('status').textContent = t; }
+
+fetch('/api/personas').then(r => r.json()).then(list => {
+  $('persona').innerHTML = list.map(p => `<option value="${esc(p.id)}">${esc(p.name)}: ${esc(p.goal.slice(0, 50))}</option>`).join('');
+});
+
+
+// ---- live audio: the server relays both sides of the call; caller 16 kHz (left), agent 24 kHz (right) ----
+let actx, aws, cursor = [0, 0], srcs = [[], []], panners = [], dotTimers = [];
+const RATES = [16000, 24000];
+function audioStart() {
+  audioStop();
+  if (!$('sound').checked) return;
+  actx = new (window.AudioContext || window.webkitAudioContext)(); actx.resume();
+  panners = [-0.8, 0.8].map(p => { const n = actx.createStereoPanner(); n.pan.value = p; n.connect(actx.destination); return n; });
+  cursor = [0, 0]; srcs = [[], []];
+}
+function audioStop() {
+  try { aws && aws.close(); } catch {}
+  srcs.forEach((_, ch) => stopChannel(ch));
+  try { actx && actx.close(); } catch {}
+  actx = aws = null;
+}
+function stopChannel(ch) { (srcs[ch] || []).forEach(s => { try { s.stop(); } catch {} }); srcs[ch] = []; cursor[ch] = 0; }
+function blink(ch) {
+  const dot = $(ch ? 'agentdot' : 'simdot'); dot.classList.add('on');
+  clearTimeout(dotTimers[ch]); dotTimers[ch] = setTimeout(() => dot.classList.remove('on'), 250);
+}
+function playChunk(ch, buf) {
+  if (!actx) return;
+  const pcm = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength >> 1), f = new Float32Array(pcm.length);
+  for (let i = 0; i < pcm.length; i++) f[i] = pcm[i] / 32768;
+  const ab = actx.createBuffer(1, f.length, RATES[ch]); ab.copyToChannel(f, 0);
+  const s = actx.createBufferSource(); s.buffer = ab; s.connect(panners[ch]);
+  if (cursor[ch] < actx.currentTime + 0.05) cursor[ch] = actx.currentTime + 0.15;   // small jitter buffer when we fell behind
+  s.start(cursor[ch]); cursor[ch] += ab.duration; srcs[ch].push(s);
+  if (srcs[ch].length > 400) srcs[ch].splice(0, 200);
+  blink(ch);
+}
+function audioConnect(runId) {
+  if (!$('sound').checked) return;
+  aws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/audio/${runId}`);
+  aws.binaryType = 'arraybuffer';
+  aws.onmessage = e => { const u = new Uint8Array(e.data); playChunk(u[0], u.subarray(1).slice()); };
+}
+
+function handle(ev) {
+  switch (ev.type) {
+    case 'call_start':
+      add('sim', `<b>${esc(ev.persona.name)}</b><div class="meta">${esc(ev.persona.traits)} · patience ${esc(ev.persona.patience)}<br>Goal: ${esc(ev.scenario.goal)}<br>voice ${esc(ev.voice)} · audio ${esc(ev.audio)}</div>`);
+      add('agent', `<div class="meta">Connected to the voice agent</div>`);
+      add('judge', `<div class="pending">Waiting for the call to finish</div>`, 'wait'); setStatus('call in progress'); break;
+    case 'persona_thinking':
+      pending['p' + ev.turn] = add('sim', `<span class="pending">Turn ${ev.turn + 1}: caller is thinking</span>`); break;
+    case 'persona_turn':
+      clearPending('p' + ev.turn);
+      add('sim', `${esc(ev.utterance)}<div class="meta"><span class="tag">${esc(ev.how === 'clip' ? 'static clip' : 'live TTS')}</span><span class="tag">${esc(ev.intent)}</span>${ev.barge_in ? '<span class="tag">barge-in</span>' : ''}${ev.behavior_tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}<br>LLM ${ev.think_ms} ms · pause ${ev.hesitation_ms} ms${ev.end_call ? ' · ends call' : ''}</div>`, 'say'); break;
+    case 'caller_speaking':
+      pending['s' + ev.turn] = add('sim', `<span class="pending">Speaking (${ev.seconds}s of audio)</span>`); break;
+    case 'caller_spoken': clearPending('s' + ev.turn);
+      pending['a' + ev.turn] = add('agent', `<span class="pending">Turn ${ev.turn + 1}: agent is responding</span>`); break;
+    case 'agent_audio': add('agent', `<div class="meta">First audio ${ev.ttfa_ms ?? '?'} ms after the caller stopped</div>`); break;
+    case 'agent_event':
+      if (ev.kind === 'transcript') add('agent', `<div class="heard">heard: ${esc(ev.text)}</div>`);
+      else if (ev.kind === 'reply') { clearPending('a' + ev.turn); add('agent', `${esc(ev.text)}`, 'say'); }
+      else if (ev.kind === 'tool') add('agent', `<div class="tool">tool ${esc(ev.name)}(${esc(JSON.stringify(ev.args))})<br>→ ${esc(JSON.stringify(ev.result).slice(0, 300))} <span class="meta">${ev.ms} ms</span></div>`);
+      else if (ev.kind === 'interrupted') { stopChannel(1); add('agent', `<div class="meta">interrupted by the caller</div>`); }
+      else if (ev.kind === 'error' || ev.kind === 'timeout') add('agent', `<span class="err">${esc(ev.kind)}: ${esc(ev.message)}</span>`);
+      break;
+    case 'turn_end': clearPending('a' + ev.turn); break;
+    case 'persona_error': clearPending('p' + ev.turn); add('sim', `<span class="err">${esc(ev.message)}</span>`); break;
+    case 'call_end':
+      Object.keys(pending).forEach(clearPending);
+      add('agent', `<div class="meta">Call ended${ev.error ? ' · <span class="err">' + esc(ev.error) + '</span>' : ''} · tools: ${esc((ev.tools_called || []).join(', ') || 'none')}</div>`);
+      setStatus('judging…'); break;
+    case 'judge_start':
+      feeds.judge.querySelectorAll('.wait').forEach(e => e.remove());
+      pending.j = add('judge', `<span class="pending">Judge ${esc(ev.model)} is scoring the call</span>`); break;
+    case 'judge_result': {
+      clearPending('j');
+      if (ev.error) { add('judge', `<span class="err">${esc(ev.error)}</span>`); break; }
+      const rows = Object.entries(ev.scores).map(([k, v]) => `<span>${esc(k.replace('_', ' '))}</span><b>${v}/5</b><div class="bar"><i style="width:${v * 20}%"></i></div>`).join('');
+      add('judge', `<div class="verdict ${ev.pass ? 'pass' : 'fail'}">${ev.pass ? 'PASS' : 'FAIL'} · ${ev.overall.toFixed(1)}</div><div class="score">${rows}</div>
+        ${ev.issues.length ? `<div class="meta">Issues: ${esc(ev.issues.join('; '))}</div>` : ''}<div>${esc(ev.reason)}</div><div class="meta">${esc(ev.model)}</div>`); break; }
+    case 'recording': add('judge', `<div class="meta">Recording (caller left, agent right)</div><audio controls src="${esc(ev.url)}"></audio>`); break;
+    case 'saved': setStatus('done · saved ' + ev.path.split(/[\\/]/).slice(-2).join('/')); break;
+    case 'fatal': Object.keys(pending).forEach(clearPending); add('judge', `<span class="err">${esc(ev.message)}</span>`); setStatus('failed'); break;
+    case 'end': $('go').disabled = false; es && es.close(); setTimeout(audioStop, 15000); break;
+  }
+}
+
+$('go').onclick = async () => {
+  audioStart();   // create the AudioContext inside the click so the browser allows sound
+  Object.values(feeds).forEach(f => f.innerHTML = ''); pending = {}; $('go').disabled = true; setStatus('starting…');
+  const res = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    persona: $('persona').value, audio: $('audio').value, voice: $('voice').value, persona_backend: $('pbackend').value,
+    judge_model: $('jmodel').value, max_turns: +$('turns').value }) });
+  if (!res.ok) { setStatus('could not start: HTTP ' + res.status); $('go').disabled = false; return; }
+  const { run_id } = await res.json();
+  audioConnect(run_id);
+  es = new EventSource('/api/stream/' + run_id);
+  es.onmessage = e => handle(JSON.parse(e.data));
+  es.onerror = () => { setStatus('stream lost'); $('go').disabled = false; es.close(); };
+};
+</script>
+</body>
+</html>

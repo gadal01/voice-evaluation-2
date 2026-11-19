@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "persona-caller turn output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["utterance", "clip_id", "intent", "end_call", "hesitation_ms", "barge_in", "behavior_tags"],
+  "properties": {
+    "utterance": { "type": "string", "minLength": 1, "maxLength": 400 },
+    "clip_id": { "type": ["string", "null"] },
+    "intent": {
+      "type": "string",
+      "enum": ["greeting", "provide_info", "confirm", "correct", "ask_question",
+               "express_frustration", "clarify", "request_human", "end_call"]
+    },
+    "end_call": { "type": "boolean" },
+    "hesitation_ms": { "type": "integer", "minimum": 0, "maximum": 3000 },
+    "barge_in": { "type": "boolean" },
+    "behavior_tags": { "type": "array", "items": { "type": "string" }, "maxItems": 6 }
+  }
+}

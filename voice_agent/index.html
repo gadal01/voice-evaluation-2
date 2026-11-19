@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sample Voice Agent</title>
+<style>
+  body { font: 16px system-ui, sans-serif; max-width: 560px; margin: 2rem auto; padding: 0 16px; }
+  button { font-size: 1rem; padding: .6rem 1.2rem; }
+  #status { color: #666; margin: .8rem 0; }
+  #log p { margin: .3rem 0; }
+  .user { color: #0a58ca; } .agent { color: #198754; }
+  .tool { color: #6c757d; font: 12px ui-monospace, monospace; word-break: break-all; }
+</style>
+</head>
+<body>
+<h1>Sample Voice Agent</h1>
+<p><label>Access key <input id="key" type="password" autocomplete="off" placeholder="AUTH_API_KEY" size="32"></label></p>
+<button id="btn">Start talking</button>
+<div id="status">idle</div>
+<div id="log"></div>
+<script>
+const keyEl = document.getElementById('key'), btn = document.getElementById('btn'), statusEl = document.getElementById('status'), log = document.getElementById('log');
+try { keyEl.value = sessionStorage.getItem('accessKey') || ''; } catch {}
+let ws, ctx, stream, node, playAt = 0, sources = [], outRate = 24000;
+
+const say = (cls, t) => { const p = document.createElement('p'); p.className = cls; p.textContent = t; log.append(p); };
+
+// Mic worklet: downsample to 16 kHz PCM16 and post to main thread.
+const workletSrc = `
+class Cap extends AudioWorkletProcessor {
+  constructor(){ super(); this.r = sampleRate/16000; this.pos = 0; this.out = []; }
+  process(inputs){
+    const ch = inputs[0][0]; if(!ch) return true;
+    for(let i=0;i<ch.length;i++){
+      this.pos += 1;
+      if(this.pos >= this.r){ this.pos -= this.r;
+        this.out.push(Math.max(-1,Math.min(1,ch[i]))*32767); }
+    }
+    if(this.out.length >= 480){ this.port.postMessage(Int16Array.from(this.out).buffer); this.out = []; }
+    return true;
+  }
+}
+registerProcessor('cap', Cap);`;
+
+function stopPlayback() { sources.forEach(s => { try { s.stop(); } catch {} }); sources = []; playAt = 0; }
+
+function play(buf) {
+  const pcm = new Int16Array(buf), f = new Float32Array(pcm.length);
+  for (let i = 0; i < pcm.length; i++) f[i] = pcm[i] / 32768;
+  const ab = ctx.createBuffer(1, f.length, outRate); ab.copyToChannel(f, 0);
+  const s = ctx.createBufferSource(); s.buffer = ab; s.connect(ctx.destination);
+  playAt = Math.max(playAt, ctx.currentTime); s.start(playAt); playAt += ab.duration; sources.push(s);
+}
+
+// Exchange the access key for a short-lived JWT; the socket is opened with that token, never the key.
+async function fetchToken() {
+  const key = keyEl.value.trim();
+  if (!key) throw new Error('enter the access key first');
+  const res = await fetch('/auth/token', { method: 'POST', headers: { 'X-API-Key': key } });
+  if (res.status === 401) throw new Error('access key rejected');
+  if (!res.ok) throw new Error('could not get a token (HTTP ' + res.status + ')');
+  try { sessionStorage.setItem('accessKey', key); } catch {}
+  return (await res.json()).access_token;
+}
+
+async function start() {
+  const token = await fetchToken();
+  ctx = new AudioContext();
+  stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([workletSrc], { type: 'application/javascript' })));
+  // Browsers cannot set headers on a WebSocket, so the token travels as a subprotocol: "bearer", <jwt>.
+  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`, ['bearer', token]);
+  ws.binaryType = 'arraybuffer';
+  let opened = false;
+  ws.onopen = () => { opened = true; };
+  ws.onmessage = e => {
+    if (typeof e.data !== 'string') return play(e.data);
+    const m = JSON.parse(e.data);
+    if (m.type === 'ready') { outRate = m.out_rate; statusEl.textContent = 'listening…'; }
+    if (m.type === 'interrupted') stopPlayback();   // user barged in
+    if (m.type === 'transcript') say('user', 'You: ' + m.text);
+    if (m.type === 'reply') say('agent', 'Agent: ' + m.text);
+    if (m.type === 'tool') say('tool', `🔧 ${m.name}(${JSON.stringify(m.args)}) → ${JSON.stringify(m.result)}`);
+    if (m.type === 'error') { statusEl.textContent = 'error: ' + m.message; }
+  };
+  ws.onclose = () => { stop(); if (!opened) statusEl.textContent = 'connection refused (token rejected or server down)'; };
+  node = new AudioWorkletNode(ctx, 'cap');
+  node.port.onmessage = e => ws.readyState === 1 && ws.send(e.data);
+  ctx.createMediaStreamSource(stream).connect(node);
+  btn.textContent = 'Stop';
+}
+
+function stop() {
+  stream?.getTracks().forEach(t => t.stop()); ctx?.close(); ws?.close();
+  ws = ctx = stream = null; btn.textContent = 'Start talking'; statusEl.textContent = 'idle';
+}
+
+btn.onclick = () => (ws ? stop() : start().catch(err => { statusEl.textContent = err.message; }));
+</script>
+</body>
+</html>

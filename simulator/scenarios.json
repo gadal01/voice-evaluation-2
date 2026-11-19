@@ -1,0 +1,360 @@
+[
+  {
+    "id": "cost_quote",
+    "description": "Caller asks what can be serviced and what an AC repair costs (read-only).",
+    "turns": [
+      "Hi. Which appliances can you service, and how much would a repair on the air conditioner cost?"
+    ],
+    "expect": {
+      "tools": [
+        {
+          "name": "list_serviceable_items",
+          "optional": true
+        },
+        {
+          "name": "get_servicing_cost",
+          "args": {
+            "item_id": "AC-100",
+            "service_type": "repair"
+          }
+        }
+      ],
+      "forbidden_tools": [
+        "create_service_request"
+      ],
+      "outcome": {
+        "created": false
+      },
+      "reply_mentions": [
+        "\\$?175"
+      ]
+    }
+  },
+  {
+    "id": "express_quote",
+    "description": "Express full-service quote for the refrigerator.",
+    "turns": [
+      "How much for an express full service on the refrigerator?"
+    ],
+    "expect": {
+      "tools": [
+        {
+          "name": "get_servicing_cost",
+          "args": {
+            "item_id": "RF-200",
+            "service_type": "full_service",
+            "urgency": "express"
+          }
+        }
+      ],
+      "forbidden_tools": [
+        "create_service_request"
+      ],
+      "outcome": {
+        "created": false
+      }
+    }
+  },
+  {
+    "id": "express_slots",
+    "description": "Asks for the earliest express appointment.",
+    "turns": [
+      "When is the earliest appointment you have for express service?"
+    ],
+    "expect": {
+      "tools": [
+        {
+          "name": "get_available_slots",
+          "args": {
+            "urgency": "express"
+          }
+        }
+      ],
+      "forbidden_tools": [
+        "create_service_request"
+      ],
+      "outcome": {
+        "created": false
+      }
+    }
+  },
+  {
+    "id": "unserviceable_item",
+    "description": "Asks for something we do not service; must not book anything.",
+    "turns": [
+      "Can you fix the engine of my car?"
+    ],
+    "expect": {
+      "tools": [
+        {
+          "name": "list_serviceable_items",
+          "optional": true
+        }
+      ],
+      "forbidden_tools": [
+        "create_service_request"
+      ],
+      "outcome": {
+        "created": false
+      }
+    }
+  },
+  {
+    "id": "book_ac_inspection",
+    "description": "Full booking: caller gives every detail up front, then confirms.",
+    "turns": [
+      "Hi, I would like to book an inspection for my air conditioner. It is not cooling. My name is Sam Rivera and my phone number is five five five, zero one zero zero. The earliest slot is fine.",
+      "Yes, that price is fine. Please go ahead and book it."
+    ],
+    "expect": {
+      "tools": [
+        {
+          "name": "get_servicing_cost",
+          "args": {
+            "item_id": "AC-100"
+          },
+          "optional": true
+        },
+        {
+          "name": "create_service_request",
+          "args": {
+            "item_id": "AC-100",
+            "~customer_name": "sam"
+          }
+        }
+      ],
+      "outcome": {
+        "created": true,
+        "fields": {
+          "quote.item_id": "AC-100",
+          "quote.service_type": "inspection",
+          "~customer_name": "rivera",
+          "~phone": "0100"
+        }
+      },
+      "reply_mentions": [
+        "SR[- ]?\\d+|\\d{4}"
+      ],
+      "readback_digits": [
+        "5550100"
+      ]
+    }
+  },
+  {
+    "id": "dishwasher_request",
+    "description": "Caller wants to raise a service request for a dishwasher, which is not in the catalogue; the agent must say so and must not book anything.",
+    "turns": [
+      "Hi, I would like to raise a request for my dishwasher. It is leaking water."
+    ],
+    "expect": {
+      "tools": [
+        {
+          "name": "list_serviceable_items",
+          "optional": true
+        }
+      ],
+      "forbidden_tools": [
+        "create_service_request"
+      ],
+      "outcome": {
+        "created": false
+      },
+      "reply_mentions": [
+        "can(?:no|')t|cannot|unable|don'?t|do not|doesn'?t|not (?:able|available|something|offer|service)|only (?:service|offer)|sorry|unfortunately"
+      ]
+    }
+  },
+  {
+    "id": "book_ac_reactive",
+    "description": "Full booking where the caller only opens with the request and then answers whatever the agent asks (name, phone, read-back, slot, price confirmation), in whatever order it asks.",
+    "dialogue": {
+      "start": "Hi, I would like to book an inspection for my air conditioner. It is not cooling.",
+      "replies": [
+        {
+          "when": ".",
+          "wrong_digits": "5550100",
+          "once": false,
+          "say": "No, that is not right. My phone number is five five five, zero one zero zero."
+        },
+        {
+          "when": "name.{0,40}phone|phone.{0,40}name",
+          "say": "My name is Sam Rivera and my phone number is five five five, zero one zero zero."
+        },
+        {
+          "when": "phone|number|contact",
+          "say": "My phone number is five five five, zero one zero zero."
+        },
+        {
+          "when": "\\bname\\b",
+          "say": "My name is Sam Rivera."
+        },
+        {
+          "when": "issue|problem|describe|wrong|detail|symptom|noise|error",
+          "say": "It is not cooling, it only blows warm air."
+        },
+        {
+          "when": "correct|right\\?|read (?:that )?back",
+          "say": "Yes, that is correct."
+        },
+        {
+          "when": "standard or express|express or standard|urgency",
+          "say": "Standard service is fine."
+        },
+        {
+          "when": "address",
+          "say": "I would rather not give an address. Please just book the inspection without it."
+        },
+        {
+          "when": "go ahead|shall i|should i|would you like me to|do you want|confirm|proceed|price|total|cost",
+          "say": "Yes, that price is fine. Please go ahead and book it."
+        },
+        {
+          "when": "slot|date|time|appointment|earliest|schedule|when",
+          "say": "The earliest slot is fine."
+        }
+      ],
+      "max_turns": 8
+    },
+    "expect": {
+      "tools": [
+        {
+          "name": "get_servicing_cost",
+          "args": {
+            "item_id": "AC-100"
+          },
+          "optional": true
+        },
+        {
+          "name": "create_service_request",
+          "args": {
+            "item_id": "AC-100",
+            "~customer_name": "sam"
+          }
+        }
+      ],
+      "outcome": {
+        "created": true,
+        "fields": {
+          "quote.item_id": "AC-100",
+          "quote.service_type": "inspection",
+          "~customer_name": "rivera",
+          "~phone": "0100"
+        }
+      },
+      "reply_mentions": [
+        "SR[- ]?\\d+|\\d{4}"
+      ],
+      "readback_digits": [
+        "5550100"
+      ]
+    }
+  },
+  {
+    "id": "fridge_leaking_book",
+    "description": "Fridge leaking - book repair (empathy) (QA golden set)",
+    "turns": [
+      "Hello, my LG refrigerator is leaking water all over the kitchen floor and I am really worried about the food. I need a repair. My name is Priya Nair, phone five five five, zero one four two.",
+      "Yes, that is correct. Please book the earliest slot."
+    ],
+    "expect": {
+      "tools": [
+        {
+          "name": "create_service_request",
+          "args": {
+            "item_id": "RF-200"
+          }
+        }
+      ],
+      "outcome": {
+        "created": true,
+        "fields": {
+          "quote.item_id": "RF-200",
+          "quote.service_type": "repair",
+          "~customer_name": "nair",
+          "~phone": "0142"
+        }
+      }
+    }
+  },
+  {
+    "id": "washer_noisy_book",
+    "description": "Washer loud noise - book inspection (QA golden set)",
+    "turns": [
+      "Hi, my Whirlpool washing machine is making a loud banging noise during the spin cycle. Can I book an inspection? Daniel Okafor, phone five five five, zero one seven seven.",
+      "Yes, go ahead and book it."
+    ],
+    "expect": {
+      "tools": [
+        {
+          "name": "create_service_request",
+          "args": {
+            "item_id": "WM-300"
+          }
+        }
+      ],
+      "outcome": {
+        "created": true,
+        "fields": {
+          "quote.item_id": "WM-300",
+          "quote.service_type": "inspection",
+          "~customer_name": "okafor",
+          "~phone": "0177"
+        }
+      }
+    }
+  },
+  {
+    "id": "tv_no_display_book",
+    "description": "TV no display - book inspection (QA golden set)",
+    "turns": [
+      "Hello, the screen on my Sony television stays black, there is sound but no picture. I would like an inspection. I am Mei Chen, phone five five five, zero one two three.",
+      "Yes please, book it."
+    ],
+    "expect": {
+      "tools": [
+        {
+          "name": "create_service_request",
+          "args": {
+            "item_id": "TV-600"
+          }
+        }
+      ],
+      "outcome": {
+        "created": true,
+        "fields": {
+          "quote.item_id": "TV-600",
+          "quote.service_type": "inspection",
+          "~customer_name": "chen",
+          "~phone": "0123"
+        }
+      }
+    }
+  },
+  {
+    "id": "water_heater_cold_book",
+    "description": "Water heater no hot water - express (QA golden set)",
+    "turns": [
+      "Hi, I have no hot water at home since this morning. It is the water heater. I need an express repair please. Omar Haddad, phone five five five, zero one six six.",
+      "Yes, that works. Please book it."
+    ],
+    "expect": {
+      "tools": [
+        {
+          "name": "create_service_request",
+          "args": {
+            "item_id": "WH-400"
+          }
+        }
+      ],
+      "outcome": {
+        "created": true,
+        "fields": {
+          "quote.item_id": "WH-400",
+          "quote.service_type": "repair",
+          "~customer_name": "haddad",
+          "~phone": "0166"
+        }
+      }
+    }
+  }
+]

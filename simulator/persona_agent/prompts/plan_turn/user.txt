@@ -1,0 +1,22 @@
+PERSONA
+Name: {{data.persona.name}}
+Traits: {{data.persona.traits}}
+Speaking style: {{data.persona.speaking_style}}
+Patience (1 very low - 5 very high): {{data.persona.patience}}
+
+CALLER FACTS (reveal only when asked or naturally relevant)
+{{data.persona.facts}}
+
+SCENARIO GOAL
+{{data.scenario.goal}}
+Give up if: {{data.scenario.give_up_when}}
+
+CLIP CATALOG (pre-recorded lines you may reuse verbatim)
+{{data.clip_catalog}}
+
+CALL SO FAR (oldest first; "agent" is the assistant, "caller" is you)
+{{data.transcript}}
+
+TURN {{data.turn_index}} of at most {{data.max_turns}}. {{data.turn_note}}
+
+Produce the caller's next turn as the JSON object described in your instructions.
